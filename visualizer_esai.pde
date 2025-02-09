@@ -83,6 +83,20 @@ void draw() {
     slowPhaseDuration = map(lastEnergyLevel - energyLevel, 0, 200, 1000, 4000); // Slow phase duration scales with drop intensity
   }
   lastEnergyLevel = energyLevel;
+  
+  // Detect sweeping woosh sound
+  float sweepIntensity = spectrum[150] + spectrum[200] + spectrum[250];
+  if (sweepIntensity > 0.3 && !sweepDetected) {
+    sweepDetected = true;
+    sweepTimer = millis();
+    sweepBlurAmount = 10;
+  }
+  if (sweepDetected) {
+    sweepBlurAmount = lerp(sweepBlurAmount, 0, 0.02);
+    if (millis() - sweepTimer > 3000) {
+      sweepDetected = false;
+    }
+  }
 
   // Ensure slow phase adapts to music intensity
   if (dropDetected && millis() - slowTimer > slowPhaseDuration) { // Dynamic slow phase duration
@@ -98,7 +112,7 @@ void draw() {
   // Audio frequency response (SMOOTHED with lerp)
   float intensityFactor = slowPhase ? 0.01 : 1.0; // Reduce intensity during slow phase
   float bass = lerp(bassPulse, spectrum[5] * 300 * intensityFactor, 0.05);
-  float mids = lerp(glitchIntensity, spectrum[100] * 100 * intensityFactor, 0.06);
+  float mids = lerp(glitchIntensity, spectrum[20] * 10 * intensityFactor, 0.06);
   float highs = lerp(strobeIntensity, spectrum[300] * 200 * intensityFactor, 0.02);
 
   bassPulse = bass;
@@ -106,7 +120,13 @@ void draw() {
   strobeIntensity = highs;
 
   // **BASS: Liquid Terrain Pulse (Dampened at Low Energy, Wild at High Energy) following drop speed**
-  flying -= (0.015 + energyLevel * 0.002) * intensityFactor;
+  //flying -= (0.015 + energyLevel * 0.002) * intensityFactor;
+  
+    // Introduce a bigger pulse effect when bass hits
+  bassPulse = lerp(bassPulse, spectrum[5] * 300, 0.15);
+  float bassSlowFactor = map(spectrum[5], 0, 1, 0.5, 1.0); // More extreme slow down based on bass intensity
+  float terrainSpeedFactor = (sweepDetected) ? 0.3 : bassSlowFactor;
+  flying -= (0.015 + energyLevel * 0.002 + bassPulse * 0.06) * terrainSpeedFactor;
 
   for (int y = 0; y < rows; y++) {
     for (int x = 0; x < cols; x++) {
