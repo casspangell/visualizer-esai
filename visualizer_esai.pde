@@ -1,127 +1,116 @@
 import processing.sound.*;
-SoundFile soundfile;
 
-// Audio
+SoundFile soundfile;
 FFT fft;
 int bands = 512;
 float[] spectrum = new float[bands];
 
-// Circles data
-int numCircles = 30;
-float[] circleX, circleY, circleSize, explosionFactor;
-float[] speedX, speedY;
+// Terrain mapping for liquid motion effect
+int cols, rows;
+int scl = 20; // Slightly smaller scale for more details
+int w = 1080; // Terrain width
+int h = 1080; // Terrain height
+float flying = 0;
+float[][] terrain;
 
-// Color variables
-float redVal = 0;
-float greenVal = 0;
-float blueVal = 0;
+// Pulse and glitch effect variables
+float bassPulse = 0;
+float glitchIntensity = 0;
+float strobeIntensity = 0; // New variable to smooth high-frequency flashes
+float energyLevel = 0;
 
 void setup() {
-  size(640, 360);
+  size(1080, 1080, P3D);
   background(0);
   
-  // Load the MP3 file
+  // Load the audio file
   soundfile = new SoundFile(this, "10-Wut-R-Frends-4.mp3");
   
   // Initialize FFT
   fft = new FFT(this, bands);
   fft.input(soundfile);
   
-  // Start playing the sound file
-  soundfile.play();
-
-  // Initialize circles with random positions and speeds
-  circleX = new float[numCircles];
-  circleY = new float[numCircles];
-  circleSize = new float[numCircles];
-  explosionFactor = new float[numCircles]; // Controls explosion intensity
-  speedX = new float[numCircles];
-  speedY = new float[numCircles];
-
-  for (int i = 0; i < numCircles; i++) {
-    circleX[i] = random(width);
-    circleY[i] = random(height);
-    circleSize[i] = random(10, 100);
-    explosionFactor[i] = 1; // Default no explosion
-    speedX[i] = random(-3, 3);
-    speedY[i] = random(-3, 3);
-  }
+  // Start playing the sound
+  soundfile.loop();
+  
+  // Setup terrain for liquid effect
+  cols = w / scl;
+  rows = h / scl;
+  terrain = new float[cols][rows];
 }
 
 void draw() {
   // Analyze the audio spectrum
   fft.analyze(spectrum);
 
-  // Detect peaks and adjust colors
-  float peakThreshold = 0.08; // Defines an "explosive" moment
-  boolean explosionTriggered = false; // Track if an explosion should happen
-  
+  // Compute overall energy level
+  float sum = 0;
   for (int i = 0; i < bands; i++) {
-    if (spectrum[i] > peakThreshold) { // Super sensitive peak detection
-      float peak = spectrum[i] * 255;
-      explosionTriggered = true; // Trigger explosion
-      if (i < bands / 3) {
-        redVal = peak;
-      } else if (i < 2 * bands / 3) {
-        greenVal = peak;
+    sum += spectrum[i];
+  }
+  energyLevel = lerp(energyLevel, sum * 50, 0.05);
+
+  // Background with intensity-based fade effect
+  background(0);
+  fill(0, 30 + energyLevel * 0.1);
+  rect(0, 0, width, height);
+
+  // Audio frequency response (SMOOTHED with lerp)
+  float bass = lerp(bassPulse, spectrum[5] * 300, 0.05 + energyLevel * 0.001); // Increased smoothing when energy is high
+  float mids = lerp(glitchIntensity, spectrum[100] * 100, 0.06 + energyLevel * 0.002); // More glitch with higher energy
+  float highs = lerp(strobeIntensity, spectrum[300] * 200, 0.02 + energyLevel * 0.003); // Strobes scale with energy
+
+  bassPulse = bass;
+  glitchIntensity = mids;
+  strobeIntensity = highs;
+
+  // **BASS: Liquid Terrain Pulse (Dampened at Low Energy, Wild at High Energy)**
+  flying -= 0.015 + energyLevel * 0.002; // More chaotic movement with more energy
+
+  for (int y = 0; y < rows; y++) {
+    for (int x = 0; x < cols; x++) {
+      float distance = dist(x, y, cols / 2, rows / 2);
+      terrain[x][y] = map(noise(x * 0.1, y * 0.1, flying), 0, 1, -40 - energyLevel * 0.5, 40 + energyLevel * 0.5) + bassPulse * sin(distance * 0.1);
+    }
+  }
+
+  // **GLITCH: Snare/Clap Flickering (Goes Crazy with High Energy)**
+  if (random(1) < glitchIntensity * (0.004 + energyLevel * 0.001)) {  // More frequent glitching at higher energy
+    strokeWeight(random(1, 4 + energyLevel * 0.5));
+  } else {
+    strokeWeight(1);
+  }
+
+  // **HIGH-FREQUENCY STROBES (Maximum Chaos on High Energy Levels)**
+  if (strobeIntensity > 10) {  
+    background(255, min(255, strobeIntensity * (1.5 + energyLevel * 0.1)));  // Blinding flashes when energy is max
+  }
+
+  // Draw terrain as filled mesh covering the screen
+  pushMatrix();
+  translate(0, 0, 0);  // Reset translation to keep it fully flat
+  
+  stroke(255);
+  noStroke();
+  
+  for (int y = 0; y < rows - 1; y++) {
+    beginShape(TRIANGLE_STRIP);
+    for (int x = 0; x < cols; x++) {
+      float z1 = terrain[x][y];
+      float z2 = terrain[x][y + 1];
+      
+      float colorMix = map(z1, -40, 40, 0, 1);
+      if (energyLevel > 200) {  // When energy is super high, go wild with colors
+        fill(lerpColor(color(255, 0, 0), color(0, 255, 255), colorMix));
       } else {
-        blueVal = peak;
+        fill(lerpColor(color(0, 255, 255), color(255, 0, 150), colorMix)); // Default colors
       }
+      
+      vertex(x * scl, y * scl, z1);
+      vertex(x * scl, (y + 1) * scl, z2);
     }
+    endShape();
   }
-
-  // Apply explosion effect if triggered
-  if (explosionTriggered) {
-    for (int i = 0; i < numCircles; i++) {
-      explosionFactor[i] = random(3, 6); // Circles grow fast
-      speedX[i] = random(-10, 10); // Speed increases randomly
-      speedY[i] = random(-10, 10);
-    }
-  }
-
-  // Smooth transitions by damping colors
-  redVal *= 0.7;
-  greenVal *= 0.7;
-  blueVal *= 0.7;
-
-  // Background fade effect for smoother visuals
-  background(0, 20);
-
-  // Draw moving circles with explosion effect
-  for (int i = 0; i < numCircles; i++) {
-    float peakEffect = spectrum[int(map(i, 0, numCircles, 0, bands))] * 500;
-    float newSize = circleSize[i] + peakEffect * explosionFactor[i];
-
-    fill(redVal, greenVal, blueVal, 180);
-    noStroke();
-    ellipse(circleX[i], circleY[i], newSize, newSize);
-
-    // Explosive outward motion
-    circleX[i] += speedX[i] * explosionFactor[i];
-    circleY[i] += speedY[i] * explosionFactor[i];
-
-    // Reset explosion effect gradually
-    explosionFactor[i] *= 0.9; // Shrinks back down
-    if (explosionFactor[i] < 1) {
-      explosionFactor[i] = 1; // Reset to normal state
-    }
-
-    // Keep circles within bounds
-    if (circleX[i] < 0 || circleX[i] > width) {
-      speedX[i] = random(-5, 5);
-      circleX[i] = constrain(circleX[i], 0, width);
-    }
-    if (circleY[i] < 0 || circleY[i] > height) {
-      speedY[i] = random(-5, 5);
-      circleY[i] = constrain(circleY[i], 0, height);
-    }
-  }
-}
-
-void keyPressed() {
-  if (key == 'p' || key == 'P') {
-    soundfile.pause();
-  } else if (key == 'r' || key == 'R') {
-    soundfile.play();
-  }
+  
+  popMatrix();
 }
