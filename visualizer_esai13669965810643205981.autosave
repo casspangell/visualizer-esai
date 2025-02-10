@@ -43,20 +43,12 @@ float bassHoldTimer = 0;
 float bassHoldThreshold = 0.2;
 float bassHoldSlowFactor = 0.005;
 float sweepBlurAmount = 0;
-PImage humanImage_1, humanImage_2, humanImage_3;
 
 void setup() {
   size(1080, 1080, P3D);
   background(0);
   
-    // Load the audio file
-  soundfile = new SoundFile(this, "Project-183.mp3");
-  humanImage_1 = loadImage("human_1.png");
-  humanImage_2 = loadImage("human_2.png");
-  humanImage_3 = loadImage("human_3.png");
-  
-  // Initialize Video Export
-  videoExport = new VideoExport(this, "visualizer_output5.mp4");
+  videoExport = new VideoExport(this, "visualizer_output.mp4");
   videoExport.startMovie();
   
   // Load the audio file
@@ -76,10 +68,6 @@ void setup() {
 }
 
 void draw() {
-  frameRate(30);
-  float imageOpacity = map(energyLevel, 200, 400, 0, 255); // Control opacity dynamically
-  float imageScale = map(bassPulse, 0, 300, 1, 1.5); // Scale image with bass intensity
-  
   // Analyze the audio spectrum
   fft.analyze(spectrum);
 
@@ -93,33 +81,33 @@ void draw() {
 
 
   // Detect a drop to trigger slow phase dynamically
-  //if ((lastEnergyLevel - energyLevel > slowPhaseThreshold) && !slowPhase) {
-  //  dropDetected = true;
-  //  slowPhase = true;
-  //  slowTimer = millis();
-  //  slowPhaseDuration = map(lastEnergyLevel - energyLevel, 0, 200, 1000, 4000); // Slow phase duration scales with drop intensity
-  //}
-  //lastEnergyLevel = energyLevel;
+  if ((lastEnergyLevel - energyLevel > slowPhaseThreshold) && !slowPhase) {
+    dropDetected = true;
+    slowPhase = true;
+    slowTimer = millis();
+    slowPhaseDuration = map(lastEnergyLevel - energyLevel, 0, 200, 1000, 4000); // Slow phase duration scales with drop intensity
+  }
+  lastEnergyLevel = energyLevel;
   
-  //// Detect sweeping woosh sound
-  //float sweepIntensity = spectrum[150] + spectrum[200] + spectrum[250];
-  //if (sweepIntensity > 0.3 && !sweepDetected) {
-  //  sweepDetected = true;
-  //  sweepTimer = millis();
-  //  sweepBlurAmount = 10;
-  //}
-  //if (sweepDetected) {
-  //  sweepBlurAmount = lerp(sweepBlurAmount, 0, 0.02);
-  //  if (millis() - sweepTimer > 3000) {
-  //    sweepDetected = false;
-  //  }
-  //}
+  // Detect sweeping woosh sound
+  float sweepIntensity = spectrum[150] + spectrum[200] + spectrum[250];
+  if (sweepIntensity > 0.3 && !sweepDetected) {
+    sweepDetected = true;
+    sweepTimer = millis();
+    sweepBlurAmount = 10;
+  }
+  if (sweepDetected) {
+    sweepBlurAmount = lerp(sweepBlurAmount, 0, 0.02);
+    if (millis() - sweepTimer > 3000) {
+      sweepDetected = false;
+    }
+  }
 
   // Ensure slow phase adapts to music intensity
-  //if (dropDetected && millis() - slowTimer > slowPhaseDuration) { // Dynamic slow phase duration
-  //  slowPhase = false;
-  //  dropDetected = false;
-  //}
+  if (dropDetected && millis() - slowTimer > slowPhaseDuration) { // Dynamic slow phase duration
+    slowPhase = false;
+    dropDetected = false;
+  }
 
   // Background with intensity-based fade effect
   background(0);
@@ -141,10 +129,9 @@ void draw() {
   
     // Introduce a bigger pulse effect when bass hits
   bassPulse = lerp(bassPulse, spectrum[5] * 300, 0.15);
-  //float bassSlowFactor = map(spectrum[5], 0, 1, 0.5, 1.0); // More extreme slow down based on bass intensity
-  //float terrainSpeedFactor = (sweepDetected) ? 0.3 : bassSlowFactor;
-  //flying -= (0.015 + energyLevel * 0.002 + bassPulse * 0.06) * terrainSpeedFactor;
-    flying -= (0.015 + energyLevel * 0.002) * intensityFactor;
+  float bassSlowFactor = map(spectrum[5], 0, 1, 0.5, 1.0); // More extreme slow down based on bass intensity
+  float terrainSpeedFactor = (sweepDetected) ? 0.3 : bassSlowFactor;
+  flying -= (0.015 + energyLevel * 0.002 + bassPulse * 0.06) * terrainSpeedFactor;
 
   for (int y = 0; y < rows; y++) {
     for (int x = 0; x < cols; x++) {
@@ -153,7 +140,7 @@ void draw() {
     }
   }
 
-  // **GLITCH: Snare/Clap Flickering (Goes Crazy with High Energy)**
+  //// **GLITCH: Snare/Clap Flickering (Goes Crazy with High Energy)**
   //if (!slowPhase && random(1) < glitchIntensity * (0.004 + energyLevel * 0.001)) {
   //  strokeWeight(random(1, 4 + energyLevel * 0.5));
   //} else {
@@ -161,9 +148,9 @@ void draw() {
   //}
 
   // **HIGH-FREQUENCY STROBES (Maximum Chaos on High Energy Levels)**
-  //if (!slowPhase && strobeIntensity > 10) {  
-  //  background(255, min(255, strobeIntensity * (1.5 + energyLevel * 0.1)));  
-  //}
+  if (!slowPhase && strobeIntensity > 10) {  
+    background(255, min(255, strobeIntensity * (1.5 + energyLevel * 0.1)));  
+  }
 
   // Draw terrain as filled mesh covering the screen
   pushMatrix();
@@ -189,30 +176,6 @@ void draw() {
       vertex(x * scl, (y + 1) * scl, z2);
     }
     endShape();
-  }
-  
-   
-  // Display image when intensity is high
-  if (energyLevel > 100) {
-    pushMatrix();
-    tint(255, imageOpacity); // Apply dynamic opacity
-    translate(width / 2, height / 2);
-    scale(imageScale);
-    imageMode(CENTER);
-    
-    // Select the image based on energy level
-    PImage selectedImage;
-  
-    if (energyLevel < 300) {
-        println("HUMAN2 ="+energyLevel);
-      selectedImage = humanImage_2;
-    } else  {
-        println("HUMAN13 ="+energyLevel);
-      selectedImage = humanImage_3;
-    }
-    
-    image(selectedImage, 0, 0);
-    popMatrix();
   }
   
   popMatrix();
